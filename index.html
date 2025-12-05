@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wyszukiwarka Słów</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 2em;
+        }
+
+        .input-group {
+            margin-bottom: 30px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: #555;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1em;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .loading {
+            text-align: center;
+            color: #667eea;
+            font-style: italic;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .results {
+            margin-top: 30px;
+        }
+
+        .results-header {
+            color: #333;
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .results-count {
+            color: #667eea;
+            font-weight: 700;
+        }
+
+        .words-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .word-item {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-weight: 500;
+            color: #333;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .word-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border-left: 4px solid #c33;
+        }
+
+        .no-results {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+            font-style: italic;
+        }
+
+        .info {
+            text-align: center;
+            color: #999;
+            font-size: 0.9em;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+
+        /* Scrollbar styling */
+        .words-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .words-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .words-list::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+
+        .words-list::-webkit-scrollbar-thumb:hover {
+            background: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔤 Wyszukiwarka Słów</h1>
+        
+        <div class="input-group">
+            <label for="letters">Wpisz litery:</label>
+            <input 
+                type="text" 
+                id="letters" 
+                placeholder="np. komputer" 
+                autocomplete="off"
+            >
+        </div>
+
+        <div class="loading" id="loading">
+            Szukam słów...
+        </div>
+
+        <div class="results" id="results" style="display: none;">
+            <div class="results-header">
+                Znaleziono <span class="results-count" id="count">0</span> słów
+            </div>
+            <div class="words-list" id="wordsList"></div>
+        </div>
+
+        <div class="info">
+            Wpisz litery, aby znaleźć możliwe słowa<br>
+            Powered by <a href="https://poocoo.pl" target="_blank" style="color: #667eea; text-decoration: none; font-weight: 600;">poocoo</a>
+        </div>
+    </div>
+
+    <script>
+        const lettersInput = document.getElementById('letters');
+        const loadingEl = document.getElementById('loading');
+        const resultsEl = document.getElementById('results');
+        const wordsListEl = document.getElementById('wordsList');
+        const countEl = document.getElementById('count');
+        
+        let debounceTimer;
+
+        // Funkcja debounce
+        function debounce(func, delay) {
+            return function(...args) {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
+
+        // Funkcja wyszukująca słowa
+        async function searchWords(letters) {
+            // Czyszczenie i walidacja
+            letters = letters.trim().toLowerCase();
+            
+            if (letters.length === 0) {
+                resultsEl.style.display = 'none';
+                wordsListEl.innerHTML = '';
+                return;
+            }
+
+            // Pokazanie loadingu
+            loadingEl.style.display = 'block';
+            resultsEl.style.display = 'none';
+
+            try {
+                const response = await fetch(`https://api.poocoo.pl/api/v1/words-from-letters?letters=${encodeURIComponent(letters)}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Ukrycie loadingu
+                loadingEl.style.display = 'none';
+                
+                // Wyświetlenie wyników
+                displayResults(data);
+                
+            } catch (error) {
+                loadingEl.style.display = 'none';
+                wordsListEl.innerHTML = `<div class="error">Wystąpił błąd: ${error.message}</div>`;
+                resultsEl.style.display = 'block';
+            }
+        }
+
+        // Funkcja wyświetlająca wyniki
+        function displayResults(response) {
+            resultsEl.style.display = 'block';
+            
+            // API zwraca obiekt: {success, data: {wordGroups: [{length, words, count}], totalCount}}
+            const wordGroups = response?.data?.wordGroups || [];
+            
+            // Zbieramy wszystkie słowa z grup
+            const allWords = [];
+            wordGroups.forEach(group => {
+                allWords.push(...group.words);
+            });
+            
+            if (allWords.length === 0) {
+                wordsListEl.innerHTML = '<div class="no-results">Nie znaleziono słów</div>';
+                countEl.textContent = '0';
+                return;
+            }
+
+            countEl.textContent = allWords.length;
+            
+            wordsListEl.innerHTML = allWords
+                .map(word => `<div class="word-item">${word}</div>`)
+                .join('');
+        }
+
+        // Dodanie event listenera z debounce
+        lettersInput.addEventListener('input', debounce(function(e) {
+            searchWords(e.target.value);
+        }, 300));
+
+        // Focus na input przy załadowaniu strony
+        lettersInput.focus();
+    </script>
+</body>
+</html>
